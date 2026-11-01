@@ -147,9 +147,77 @@ class FMIndex:
             positions.append(self.sampled[row] + steps)
         return positions
 
+def reverse_complement(dna_sequence):
+    complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
+    reversed_sequence = dna_sequence[::-1]
+    return ''.join(complement[base] for base in reversed_sequence)
+
+def hamming(a, b):
+    """
+    Input: two strings of the same length.
+    Output: int, the number of positions where they differ.
+    Example: hamming("ACGT", "AGGA") → 2.
+    """
+    if len(a) != len(b):
+        raise ValueError("Strings must be of the same length")
+    return sum(1 for x, y in zip(a, b) if x != y)
+
+def seeds(read,n):
+    """
+    Input: read, a string; n, the number of seeds.
+    Output: list[tuple[int, str]], n consecutive, nearly equal pieces that cover the whole read, 
+            each with its offset in the read: piece i starts at i * len(read) // n.
+    """   
+    pieces = []
+    for i in range(n):
+        start = i * len(read) // n
+        end = (i + 1) * len(read) // n
+        pieces.append((start, read[start:end]))
+    return pieces
+
+def map_read(read, fm, ref, d=2, n_seeds=None):
+    """
+    Input:  read; fm, an FMIndex of ref + "$"; ref, the reference string; d, the maximum number 
+            of mismatches; n_seeds, the number of seeds (None means d + 1).
+    Output: tuple[list[tuple[str, int, int]], int]: the sorted list of hits (strand, position, mismatches), 
+            strand "+" for the read and "-" for its reverse complement, position 0-based in ref (for "-": the 
+            leftmost position where the reverse complement matches); and the number of candidates: the distinct 
+            starts inside the reference that you verified with hamming, summed over both strands.
+    """
+    if n_seeds is None:
+        n_seeds = d + 1
+    hits = []
+    n_candidates = 0
+    for strand, seq in (("+", read), ("-", reverse_complement(read))):
+        candidates = set()
+        for offset, seed in seeds(seq, n_seeds):
+            for p in fm.locate(seed):
+                start = p - offset
+                if 0 <= start <= len(ref) - len(seq):   # the read must not stick out of the reference
+                    candidates.add(start)
+        n_candidates += len(candidates)
+        for start in candidates:
+            mismatches = hamming(seq, ref[start:start + len(seq)])
+            if mismatches <= d:
+                hits.append((strand, start, mismatches))
+    return sorted(hits), n_candidates
+
+def brute_map(read, ref, d=2):
+    """
+    Input: read, ref and d as in map_read (no index).
+    Output: the sorted list of hits, as in map_read, found the slow way: try every start on both strands.
+    """
+    hits = []
+    for strand, seq in (("+", read), ("-", reverse_complement(read))):
+        for start in range(len(ref) - len(seq) + 1):
+            mismatches = hamming(seq, ref[start:start + len(seq)])
+            if mismatches <= d:
+                hits.append((strand, start, mismatches))
+    return sorted(hits)
 
 
 def task1():
+    print("--- TASK 1 ---")
     print(brute_force("AAAA", "AA"))
     print(suffix_array("ACGT$"))
     a,b = (find_block("ATGGTG",suffix_array("ATGGTG"),"TG"))
@@ -158,16 +226,28 @@ def task1():
     return
 
 def task2():
+    print("--- TASK 2 ---")
     bt = bwt("CAT$", [3, 1, 0, 2])
     print(first_occurrence(bt))
     print(inverse_bwt(bt))
 
 def task3():
+    print("--- TASK 3 ---")
     fm = FMIndex("CAT$", 2)
     print(fm.count("AT"))
     print(fm.locate("AT"))
+
+def task4():
+    print("--- TASK 4 ---")
+    print(reverse_complement("AACG"))
+    print(hamming("ACGT", "AGGA"))
+    print(seeds("ACGTACGTAC", 3))
+    fm = FMIndex("ACGTACGT$", 2)
+    print(map_read("ACGTA", fm, "ACGTACGT"))
+    print(brute_map("ACGTA", "ACGTACGT"))
 
 if __name__ == "__main__":
     task1()
     task2()
     task3()
+    task4()
