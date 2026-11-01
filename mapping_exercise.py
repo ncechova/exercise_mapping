@@ -82,7 +82,70 @@ def inverse_bwt(bwt):
         row = first[X] + k - 1
         
     return "".join(reversed(collected)) + "$"
-        
+
+
+class FMIndex:
+    """
+    Input: text, a string ending with $; s, a positive int (the sampling step).
+    Stores:
+    self.bwt: the BWT of text;
+    self.first_occurrence: first_occurrence(self.bwt);
+    self.counts: dict[str, list[int]], for every letter X a list of length len(text) + 1 with counts[X][i] = the number of X in self.bwt[:i];
+    self.sampled: dict[int, int], part of the suffix array: row → sa[row], kept only where sa[row] is a multiple of s;
+    self.s: s.   
+    """
+    def __init__(self, text, s):
+        sa = suffix_array(text)
+        self.s = s
+        self.bwt = bwt(text, sa)
+        self.first_occurrence = first_occurrence(self.bwt)
+        self.counts = {x: [0] * (len(text) + 1) for x in set(text)}
+        for i, letter in enumerate(self.bwt):
+            for x in self.counts:
+                self.counts[x][i + 1] = self.counts[x][i]
+            self.counts[letter][i + 1] += 1
+        self.sampled = {row: sa[row] for row in range(len(sa)) if sa[row] % s == 0}
+
+    def lf(self, row):
+        """
+        Input: row, an int with 0 ≤ row < len(self.bwt).
+        Output: int, the row of the suffix that starts one position earlier in the text: first_occurrence[X] + counts[X][row] with X = self.bwt[row].
+        Example: for FMIndex("CAT$", 2), lf(1) → 2 (row 1 is AT$, row 2 is CAT$).
+        """
+        x = self.bwt[row]
+        return self.first_occurrence[x] + self.counts[x][row]
+
+    def count(self, p):
+        """
+        Input: p, a non-empty string.
+        Output: tuple[int, int], the interval (top, bottom) of rows that start with p, found by backward search: start with (0, len(self.bwt)), then for each letter X of p from the last one: top = first_occurrence[X] + counts[X][top], and the same for bottom.
+        Example: for FMIndex("CAT$", 2), count("AT") → (1, 2).
+        """
+        top, bottom = 0, len(self.bwt)
+        for x in reversed(p):
+            if x not in self.counts:
+                return (0, 0)
+            top = self.first_occurrence[x] + self.counts[x][top]
+            bottom = self.first_occurrence[x] + self.counts[x][bottom]
+            if top == bottom:
+                return (top, bottom)
+        return (top, bottom)
+
+    def locate(self, p):
+        """
+        Input: p, a non-empty string.
+        Output: list[int], the text positions of all occurrences of p (one per row of count(p), in row order).
+        Example: for FMIndex("CAT$", 2), locate("AT") → [1] (row 1 → row 2, stored 0, one step).
+        """
+        top, bottom = self.count(p)
+        positions = []
+        for row in range(top, bottom):
+            steps = 0
+            while row not in self.sampled:
+                row = self.lf(row)
+                steps += 1
+            positions.append(self.sampled[row] + steps)
+        return positions
 
 
 
@@ -99,7 +162,12 @@ def task2():
     print(first_occurrence(bt))
     print(inverse_bwt(bt))
 
+def task3():
+    fm = FMIndex("CAT$", 2)
+    print(fm.count("AT"))
+    print(fm.locate("AT"))
 
 if __name__ == "__main__":
-    # task1()
+    task1()
     task2()
+    task3()
